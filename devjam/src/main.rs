@@ -36,6 +36,7 @@ async fn event_collector<'a>(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // --- Boilerplate ------------------------------------------------------------
     let opt = Opt::parse();
 
     env_logger::init();
@@ -68,9 +69,14 @@ async fn main() -> anyhow::Result<()> {
     program.load()?;
     program.attach(&iface, XdpFlags::default())
         .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
+
+    // --- END: Boilerplate ------------------------------------------------------------
+
     let ring_dump =
         aya::maps::RingBuf::try_from(ebpf.take_map("DNS_RESPONSES_RING_BUFFER").unwrap()).unwrap();
 
+    // Channel defintions, one channel to enable "spinloop" for reading from ring buffer
+    // Another channel that will act as a collector for all the propagated data
     let (_tx, rx) = watch::channel(false);
     let (t_event, r_event_collector): (mpsc::Sender<DnsResponse>, mpsc::Receiver<DnsResponse>) =
         mpsc::channel(50);
@@ -79,14 +85,12 @@ async fn main() -> anyhow::Result<()> {
 
     let read_buffer = tokio::spawn(async move {
         let mut rx = rx.clone();
-        let t_event = t_event.clone();
         let mut async_fd = AsyncFd::new(ring_dump).unwrap();
 
         loop {
             tokio::select! {
                 _ = async_fd.readable_mut() => {
-                let  t_event = t_event.clone();
-
+                    let  t_event = t_event.clone();
                     let mut guard = async_fd.readable_mut().await.unwrap();
                     let rb = guard.get_inner_mut();
 
@@ -144,6 +148,7 @@ async fn main() -> anyhow::Result<()> {
             event_collector(r_event_collector, received_data).await;
         })
     };
+
     let get_universe_route = warp::path("universe")
         .and(warp::get())
         .and(with_universe(received_data.clone()))
