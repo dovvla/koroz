@@ -1,0 +1,19 @@
+[package]
+name = "devjam-ebpf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+devjam-common = { path = "../devjam-common" }
+
+aya-ebpf = { workspace = true }
+aya-log-ebpf = { workspace = true }
+dnsparse = "0.3.0"
+network-types = "0.0.7"
+
+[build-dependencies]
+which = { workspace = true }
+
+[[bin]]
+name = "devjam"
+path = "src/main.rs"
