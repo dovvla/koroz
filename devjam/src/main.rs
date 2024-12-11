@@ -1,107 +1,25 @@
-use chrono::{self, DateTime, Utc};
-use serde::ser::SerializeStruct;
-use std::convert::Infallible;
+use anyhow::{Context as _, Ok};
+use chrono::{self};
 use std::sync::Arc;
 use std::{ptr, slice};
-use warp::http::StatusCode;
-use warp::reply::{self, Reply};
 use warp::Filter;
-
-use anyhow::{Context as _, Ok};
+use warp_handlers::{get_universe, with_universe};
 
 use aya::programs::{Xdp, XdpFlags};
 use clap::Parser;
-use dns_parser::ResourceRecord;
 use log::{debug, info, warn};
-use serde::Serialize;
 use tokio::io::unix::AsyncFd;
 use tokio::join;
 use tokio::sync::{mpsc, watch, RwLock};
+
+mod structs;
+mod warp_handlers;
+use structs::{DnsResponse, MyResourceRecord};
 
 #[derive(Debug, Parser)]
 struct Opt {
     #[clap(short, long, default_value = "enp5s0")]
     iface: String,
-}
-
-type DnsResponse<'a> = (Vec<MyResourceRecord<'a>>, DateTime<Utc>);
-
-type Universe<'a> = Arc<RwLock<Vec<DnsResponse<'a>>>>;
-
-#[derive(Serialize)]
-struct DnsResponseWrapper<'a> {
-    responses: Vec<DnsResponse<'a>>,
-}
-
-#[derive(Debug)]
-struct MyResourceRecord<'a>(pub ResourceRecord<'a>);
-
-impl<'a> Clone for MyResourceRecord<'a> {
-    fn clone(&self) -> Self {
-        MyResourceRecord(ResourceRecord {
-            name: self.0.name,
-            multicast_unique: self.0.multicast_unique,
-            cls: self.0.cls,
-            ttl: self.0.ttl,
-            data: match &self.0.data {
-                dns_parser::RData::A(record) => dns_parser::RData::A(*record),
-                dns_parser::RData::AAAA(record) => dns_parser::RData::AAAA(*record),
-                dns_parser::RData::CNAME(record) => dns_parser::RData::CNAME(*record),
-                dns_parser::RData::MX(record) => dns_parser::RData::MX(*record),
-                dns_parser::RData::NS(record) => dns_parser::RData::NS(*record),
-                dns_parser::RData::PTR(record) => dns_parser::RData::PTR(*record),
-                dns_parser::RData::SOA(record) => dns_parser::RData::SOA(*record),
-                dns_parser::RData::SRV(record) => dns_parser::RData::SRV(*record),
-                dns_parser::RData::TXT(record) => dns_parser::RData::TXT(record.clone()),
-                dns_parser::RData::Unknown(data) => dns_parser::RData::Unknown(data.clone()),
-            },
-        })
-    }
-}
-
-impl Serialize for MyResourceRecord<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut state = serializer.serialize_struct("ResourceRecord", 5)?;
-
-        state.serialize_field("name", &self.0.name.to_string())?;
-        state.serialize_field("multicast_unique", &self.0.multicast_unique)?;
-        // state.serialize_field("cls", &self.cls as usize)?;
-        state.serialize_field("ttl", &self.0.ttl)?;
-        match &self.0.data {
-            dns_parser::RData::A(_record) => {
-                state.serialize_field("record_type", "A")?;
-            }
-            dns_parser::RData::AAAA(_record) => {
-                state.serialize_field("record_type", "AAAA")?;
-            }
-            dns_parser::RData::CNAME(_record) => {
-                state.serialize_field("record_type", "CNAME")?;
-            }
-            dns_parser::RData::MX(_record) => {
-                state.serialize_field("record_type", "MX")?;
-            }
-            dns_parser::RData::NS(_record) => {
-                state.serialize_field("record_type", "NS")?;
-            }
-            dns_parser::RData::PTR(_record) => {
-                state.serialize_field("record_type", "PTR")?;
-            }
-            dns_parser::RData::SOA(_record) => {
-                state.serialize_field("record_type", "SOA")?;
-            }
-            dns_parser::RData::SRV(_record) => {
-                state.serialize_field("record_type", "SRV")?;
-            }
-            dns_parser::RData::TXT(_record) => {
-                state.serialize_field("record_type", "TXT")?;
-            }
-            dns_parser::RData::Unknown(_) => todo!(),
-        }
-        state.end()
-    }
 }
 
 async fn event_collector<'a>(
@@ -226,12 +144,12 @@ async fn main() -> anyhow::Result<()> {
             event_collector(r_event_collector, received_data).await;
         })
     };
+    let get_universe_route = warp::path("universe")
+        .and(warp::get())
+        .and(with_universe(received_data.clone()))
+        .and_then(get_universe);
 
     let warp_handle = {
-        let get_universe_route = warp::path("universe")
-            .and(warp::get())
-            .and(with_universe(received_data.clone()))
-            .and_then(get_universe);
         tokio::spawn(async move {
             warp::serve(get_universe_route)
                 .run(([127, 0, 0, 1], 3030))
@@ -242,19 +160,4 @@ async fn main() -> anyhow::Result<()> {
     join!(collector, read_buffer, warp_handle);
     info!("Exiting...");
     Ok(())
-}
-
-fn with_universe(
-    universe: Universe,
-) -> impl Filter<Extract = (Universe,), Error = Infallible> + Clone {
-    warp::any().map(move || universe.clone())
-}
-
-async fn get_universe(universe: Universe<'_>) -> Result<impl Reply, warp::Rejection> {
-    let universe = universe.read().await;
-    let response = DnsResponseWrapper {
-        responses: universe.clone(),
-    };
-
-    std::result::Result::Ok(reply::with_status(reply::json(&response), StatusCode::OK))
 }
