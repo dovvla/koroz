@@ -1,5 +1,6 @@
 use anyhow::{Context as _, Ok};
 use chrono::{self};
+use event_manip::event_collector;
 use std::sync::Arc;
 use std::{ptr, slice};
 use warp::Filter;
@@ -12,6 +13,7 @@ use tokio::io::unix::AsyncFd;
 use tokio::join;
 use tokio::sync::{mpsc, watch, RwLock};
 
+mod event_manip;
 mod structs;
 mod warp_handlers;
 use structs::{DnsResponse, MyResourceRecord};
@@ -20,18 +22,6 @@ use structs::{DnsResponse, MyResourceRecord};
 struct Opt {
     #[clap(short, long, default_value = "enp5s0")]
     iface: String,
-}
-
-async fn event_collector<'a>(
-    mut rx: mpsc::Receiver<DnsResponse<'a>>,
-    received_data: Arc<RwLock<Vec<DnsResponse<'a>>>>,
-) {
-    info!("Started event collector");
-    while let Some(value) = rx.recv().await {
-        // Acquire a write lock to modify the received_data
-        let mut data = received_data.write().await;
-        data.push(value);
-    }
 }
 
 #[tokio::main]
@@ -111,7 +101,7 @@ async fn main() -> anyhow::Result<()> {
                         let reading_time = chrono::offset::Utc::now();
 
                         if let std::result::Result::Ok(response_packet) = dns_parser::Packet::parse(&data[42_usize..size as usize]) {
-                            let my_records: Vec<MyResourceRecord> = response_packet.answers.into_iter().map(MyResourceRecord).collect();
+                            let my_records = response_packet.answers.into_iter().map(MyResourceRecord).collect();
                             t_event.send((my_records, reading_time)).await.unwrap();
                         }
                         else{
@@ -122,7 +112,7 @@ async fn main() -> anyhow::Result<()> {
                                 match dns_parser::Packet::parse(&data[i as usize..size as usize]) {
                                     Err(_) => {},
                                  std::result::Result::Ok(response_packet) => {
-                                    let my_records: Vec<MyResourceRecord> = response_packet.answers.into_iter().map(MyResourceRecord).collect();
+                                    let my_records = response_packet.answers.into_iter().map(MyResourceRecord).collect();
                                     t_event.send((my_records, reading_time)).await.unwrap();
                                 break;
                                 },
