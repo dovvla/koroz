@@ -1,20 +1,19 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use log::info;
 use tokio::sync::{mpsc, RwLock};
 
-use crate::structs::DnsResponse;
+use crate::structs::{DnsAnswer, DnsResponse};
 
-pub async fn event_collector<'a, C>(
-    mut rx: mpsc::Receiver<DnsResponse<'a>>,
-    dns_responses_container: Arc<RwLock<C>>,
-) where
-    C: Default + Extend<DnsResponse<'a>>,
-{
+pub async fn event_collector(
+    mut rx: mpsc::Receiver<DnsResponse>,
+    dns_responses_container: Arc<RwLock<BTreeSet<DnsAnswer>>>,
+) {
     info!("Started event collector");
-    while let Some(resource_records) = rx.recv().await {
-        // Acquire a write lock to modify the dns_responses_container
+    while let Some(dns_answers) = rx.recv().await {
         let mut dns_responses_container = dns_responses_container.write().await;
-        dns_responses_container.extend(std::iter::once(resource_records));
+        for dns_answer in dns_answers {
+            dns_responses_container.insert(dns_answer);
+        }
     }
 }

@@ -1,6 +1,7 @@
 use anyhow::{Context as _, Ok};
 use chrono::{self};
 use event_manip::event_collector;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::{ptr, slice};
 use warp::Filter;
@@ -16,7 +17,7 @@ use tokio::sync::{mpsc, watch, RwLock};
 mod event_manip;
 mod structs;
 mod warp_handlers;
-use structs::{DnsResponse, MyResourceRecord};
+use structs::{DnsAnswer, DnsResponse};
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -69,9 +70,9 @@ async fn main() -> anyhow::Result<()> {
     // Another channel that will act as a collector for all the propagated data
     let (_tx, rx) = watch::channel(false);
     let (t_event, r_event_collector): (mpsc::Sender<DnsResponse>, mpsc::Receiver<DnsResponse>) =
-        mpsc::channel(50);
+        mpsc::channel(1);
 
-    let received_data = Arc::new(RwLock::new(Vec::new()));
+    let received_data = Arc::new(RwLock::new(BTreeSet::new()));
 
     let read_buffer = tokio::spawn(async move {
         let mut rx = rx.clone();
@@ -88,36 +89,11 @@ async fn main() -> anyhow::Result<()> {
                         let ptr = read.as_ptr();
 
                         let size = unsafe { ptr::read_unaligned::<u16>(ptr as *const u16) };
-
-                        // relevant commets below, cause there is some code
-                        let mut _timestamp = unsafe { ptr::read_unaligned::<u64>(ptr.byte_add(2) as *const u64) };
-                        // checking for timestamp diff, as the timestamp that is read from the DNS_RESPONSES_RING_BUFFER is the timestamp since boot time, so we would need some magic to actually convert this
-                        // but, my testing on a usual load indicates this is at max < 100 ms, so we are fine, for PoC for sure
-                        // thus we will be concating userspace time when this was read from ring buffer
-                        // dbg!(&timestamp);
-                        // timestamp = u64::MAX - timestamp.wrapping_sub(std::time::Duration::from(nix::time::clock_gettime(nix::time::ClockId::CLOCK_MONOTONIC).unwrap()).as_nanos() as u64);
-
                         let data = unsafe { slice::from_raw_parts(ptr.byte_add(2).byte_add(8), size.into()) };
                         let reading_time = chrono::offset::Utc::now();
 
                         if let std::result::Result::Ok(response_packet) = dns_parser::Packet::parse(&data[42_usize..size as usize]) {
-                            let my_records = response_packet.answers.into_iter().map(MyResourceRecord).collect();
-                            t_event.send((my_records, reading_time)).await.unwrap();
-                        }
-                        else{
-                            // Now this is the funny part I do not understand, thing is, if for some reason header is extended
-                            // it does not start at start + 42, so we need to bruteforce find where the actual packet starts that
-                            // is parsable, consider exposing this as metric if this project ever expands
-                            for i in 0..size {
-                                match dns_parser::Packet::parse(&data[i as usize..size as usize]) {
-                                    Err(_) => {},
-                                 std::result::Result::Ok(response_packet) => {
-                                    let my_records = response_packet.answers.into_iter().map(MyResourceRecord).collect();
-                                    t_event.send((my_records, reading_time)).await.unwrap();
-                                break;
-                                },
-                            }
-                            }
+                            t_event.send(response_packet.answers.into_iter().map(|answer| (answer, reading_time)).map(DnsAnswer::from).collect()).await.unwrap();
                         }
                     }
 

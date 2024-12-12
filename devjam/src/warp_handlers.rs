@@ -6,7 +6,7 @@ use warp::{
     Filter,
 };
 
-use crate::structs::{DnsResponseWrapper, Universe};
+use crate::structs::Universe;
 
 pub fn with_universe(
     universe: Universe,
@@ -14,11 +14,11 @@ pub fn with_universe(
     warp::any().map(move || universe.clone())
 }
 
-pub async fn get_universe(universe: Universe<'_>) -> Result<impl Reply, warp::Rejection> {
+pub async fn get_universe(universe: Universe) -> Result<impl Reply, warp::Rejection> {
     let universe = universe.read().await;
-    let response = DnsResponseWrapper {
-        responses: universe.clone(),
-    };
 
-    std::result::Result::Ok(reply::with_status(reply::json(&response), StatusCode::OK))
+    std::result::Result::Ok(reply::with_status(
+        reply::json(&universe.clone()),
+        StatusCode::OK,
+    ))
 }

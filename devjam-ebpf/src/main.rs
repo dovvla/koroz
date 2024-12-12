@@ -45,22 +45,25 @@ unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
 fn try_devjam(ctx: XdpContext) -> Result<u32, ()> {
     let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0)? };
     match unsafe { (*ethhdr).ether_type } {
-        EtherType::Ipv4 => {}
+        EtherType::Ipv4 => {
+            let ipv4hdr: *const Ipv4Hdr = unsafe { ptr_at(&ctx, EthHdr::LEN) }?;
+
+            match unsafe { (*ipv4hdr).proto } {
+                IpProto::Tcp => {
+                    return Ok(XDP_PASS);
+                }
+                IpProto::Udp => {
+                    let udphdr: *const UdpHdr =
+                        unsafe { ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN) }?;
+                    if u16::from_be(unsafe { (*udphdr).source }) != 53 {
+                        info!(&ctx, "Found DNS Response packet!")
+                    }
+                }
+                _ => return Err(()),
+            };
+        }
         _ => return Ok(xdp_action::XDP_PASS),
     }
-
-    let ipv4hdr: *const Ipv4Hdr = unsafe { ptr_at(&ctx, EthHdr::LEN) }?;
-
-    match unsafe { (*ipv4hdr).proto } {
-        IpProto::Tcp => {
-            return Ok(XDP_PASS);
-        }
-        IpProto::Udp => {
-            let udphdr: *const UdpHdr = unsafe { ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN) }?;
-            if u16::from_be(unsafe { (*udphdr).source }) == 53 {}
-        }
-        _ => return Err(()),
-    };
 
     const U16_SIZE: usize = mem::size_of::<u16>();
     const U64_SIZE: usize = mem::size_of::<u64>();
