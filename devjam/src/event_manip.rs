@@ -41,7 +41,7 @@ pub struct DockerDigRepopulator;
 impl DnsInvalidate for UnboundInvalidator {
     fn command_invalidate_name(&self, domain_name: &str, record_type: &RecordType) -> Command {
         let mut cmd = Command::new("unbound-control");
-        cmd.arg("flush")
+        cmd.arg("flush_type")
             .kill_on_drop(true)
             .arg(domain_name)
             .arg(record_type.form_for_command_line_arg());

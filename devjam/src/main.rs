@@ -13,7 +13,6 @@ use prometheus::Gauge;
 use prometheus::IntCounterVec;
 use settings::settings;
 use std::collections::BinaryHeap;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::{ptr, slice};
 use warp::Filter;
@@ -37,6 +36,8 @@ use structs::{DnsAnswer, DnsResponse};
 struct Opt {
     #[clap(short, long, default_value = "enp5s0")]
     iface: String,
+    #[clap(short, long, default_value = "3030")]
+    port: u16,
 }
 
 lazy_static! {
@@ -96,10 +97,10 @@ async fn main() -> anyhow::Result<()> {
         // This can happen if you remove all log statements from your eBPF program.
         warn!("failed to initialize eBPF logger: {}", e);
     }
-    let Opt { iface } = opt;
+    let Opt { iface, port } = opt;
     let program: &mut Xdp = ebpf.program_mut("devjam").unwrap().try_into()?;
     program.load()?;
-    program.attach(&iface, XdpFlags::default())
+    program.attach(&iface, XdpFlags::SKB_MODE)
         .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
 
     // --- END: Boilerplate ------------------------------------------------------------
@@ -170,7 +171,7 @@ async fn main() -> anyhow::Result<()> {
 
     let warp_handle = {
         tokio::spawn(async move {
-            warp::serve(warp_routes).run(([127, 0, 0, 1], 3030)).await;
+            warp::serve(warp_routes).run(([127, 0, 0, 1], port)).await;
         })
     };
 
