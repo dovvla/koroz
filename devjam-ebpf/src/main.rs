@@ -18,7 +18,7 @@ use network_types::{
 };
 
 #[map]
-static DNS_RESPONSES_RING_BUFFER: RingBuf = RingBuf::with_byte_size(16_777_216u32, 0);
+static DNS_RESPONSES_RING_BUFFER: RingBuf = RingBuf::with_byte_size(32_777_216u32, 0);
 
 #[xdp]
 pub fn devjam(ctx: XdpContext) -> u32 {
