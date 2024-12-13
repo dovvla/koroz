@@ -16,6 +16,67 @@ use crate::{
     FAILED_RECORDS_MANIPULATION_COUNTER_VEC,
 };
 
+pub trait DnsInvalidate {
+    fn command_invalidate_name(&self, domain_name: &str) -> Command;
+}
+
+pub trait DnsRepopulate {
+    fn command_repopulate_name(&self, domain_name: &str) -> Command;
+}
+
+#[derive(Default, Debug)]
+pub struct UnboundInvalidator;
+#[derive(Default, Debug)]
+pub struct DockerUnboundInvalidator;
+
+#[derive(Default, Debug)]
+pub struct DigRepopulator;
+#[derive(Default, Debug)]
+
+pub struct DockerDigRepopulator;
+
+impl DnsInvalidate for UnboundInvalidator {
+    fn command_invalidate_name(&self, domain_name: &str) -> Command {
+        let mut cmd = Command::new("unbound-control");
+        cmd.arg("flush").kill_on_drop(true).arg(domain_name);
+        cmd
+    }
+}
+
+impl DnsInvalidate for DockerUnboundInvalidator {
+    fn command_invalidate_name(&self, domain_name: &str) -> Command {
+        let mut cmd = Command::new("docker");
+        cmd.arg("exec")
+            .arg("-it")
+            .arg("my-unbound")
+            .arg("unbound-control")
+            .arg("flush")
+            .kill_on_drop(true)
+            .arg(domain_name);
+        cmd
+    }
+}
+
+impl DnsRepopulate for DigRepopulator {
+    fn command_repopulate_name(&self, domain_name: &str) -> Command {
+        let mut cmd = Command::new("dig");
+        cmd.arg(domain_name).kill_on_drop(true);
+        cmd
+    }
+}
+impl DnsRepopulate for DockerDigRepopulator {
+    fn command_repopulate_name(&self, domain_name: &str) -> Command {
+        let mut cmd = Command::new("docker");
+        cmd.arg("exec")
+            .arg("-it")
+            .arg("my-unbound")
+            .arg("dig")
+            .kill_on_drop(true)
+            .arg(domain_name);
+        cmd
+    }
+}
+
 async fn process_command_end_output(
     command_end: Result<Result<Output, Error>, JoinError>,
     command_type: &str,
@@ -66,7 +127,11 @@ pub async fn aggregate_dns_answers(
     }
 }
 
-pub async fn purge_dns_records(dns_answer_set: Arc<RwLock<BinaryHeap<DnsAnswer>>>) {
+pub async fn purge_dns_records<I: DnsInvalidate, R: DnsRepopulate>(
+    dns_answer_set: Arc<RwLock<BinaryHeap<DnsAnswer>>>,
+    invalidation: I,
+    repopulation: R,
+) {
     info!("Started purger/repopulator");
     loop {
         let mut read_dns_answers = dns_answer_set.write().await;
@@ -80,25 +145,10 @@ pub async fn purge_dns_records(dns_answer_set: Arc<RwLock<BinaryHeap<DnsAnswer>>
         }
         let mut invalidation_commands: JoinSet<_> = records_for_purging
             .iter()
-            .map(|record| match settings::settings().we_running_docker {
-                true => {
-                    let mut cmd = Command::new("docker");
-                    cmd.arg("exec")
-                        .arg("-it")
-                        .arg("my-unbound")
-                        .arg("unbound-control")
-                        .arg("flush")
-                        .kill_on_drop(true)
-                        .arg(record.domain_name.clone());
-                    cmd.output()
-                }
-                false => {
-                    let mut cmd = Command::new("unbound-control");
-                    cmd.arg("flush")
-                        .kill_on_drop(true)
-                        .arg(record.domain_name.clone());
-                    cmd.output()
-                }
+            .map(|record| {
+                invalidation
+                    .command_invalidate_name(&record.domain_name)
+                    .output()
             })
             .collect();
         while let Some(command_end) = invalidation_commands.join_next().await {
@@ -107,22 +157,10 @@ pub async fn purge_dns_records(dns_answer_set: Arc<RwLock<BinaryHeap<DnsAnswer>>
 
         let mut repopulation_commands: JoinSet<_> = records_for_purging
             .iter()
-            .map(|record| match settings::settings().we_running_docker {
-                true => {
-                    let mut cmd = Command::new("docker");
-                    cmd.arg("exec")
-                        .arg("-it")
-                        .arg("my-unbound")
-                        .arg("dig")
-                        .kill_on_drop(true)
-                        .arg(record.domain_name.clone());
-                    cmd.output()
-                }
-                false => {
-                    let mut cmd = Command::new("dig");
-                    cmd.arg(record.domain_name.clone()).kill_on_drop(true);
-                    cmd.output()
-                }
+            .map(|record| {
+                repopulation
+                    .command_repopulate_name(&record.domain_name)
+                    .output()
             })
             .collect();
 

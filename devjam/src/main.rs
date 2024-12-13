@@ -2,9 +2,14 @@ use anyhow::{Context as _, Ok};
 use chrono::{self};
 use event_manip::aggregate_dns_answers;
 use event_manip::purge_dns_records;
+use event_manip::DigRepopulator;
+use event_manip::DockerDigRepopulator;
+use event_manip::DockerUnboundInvalidator;
+use event_manip::UnboundInvalidator;
 use lazy_static::lazy_static;
 use prometheus::register_int_counter_vec;
 use prometheus::IntCounterVec;
+use settings::settings;
 use std::collections::BinaryHeap;
 use std::sync::Arc;
 use std::{ptr, slice};
@@ -159,9 +164,19 @@ async fn main() -> anyhow::Result<()> {
 
     let refresher = {
         let dns_answers = Arc::clone(&dns_answers);
-        tokio::spawn(async move {
-            purge_dns_records(dns_answers).await;
-        })
+        match settings().we_running_docker {
+            true => tokio::spawn(async move {
+                purge_dns_records(
+                    dns_answers,
+                    DockerUnboundInvalidator::default(),
+                    DockerDigRepopulator::default(),
+                )
+                .await;
+            }),
+            false => tokio::spawn(async move {
+                purge_dns_records(dns_answers, UnboundInvalidator, DigRepopulator).await
+            }),
+        }
     };
 
     join!(collector, read_buffer, warp_handle, refresher);
