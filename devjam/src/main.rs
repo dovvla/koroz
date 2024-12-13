@@ -7,10 +7,13 @@ use event_manip::DockerDigRepopulator;
 use event_manip::DockerUnboundInvalidator;
 use event_manip::UnboundInvalidator;
 use lazy_static::lazy_static;
+use prometheus::register_gauge;
 use prometheus::register_int_counter_vec;
+use prometheus::Gauge;
 use prometheus::IntCounterVec;
 use settings::settings;
 use std::collections::BinaryHeap;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::{ptr, slice};
 use warp::Filter;
@@ -40,7 +43,7 @@ lazy_static! {
     static ref ACTIONS_OVER_RECORDS_COUNTER: IntCounterVec = register_int_counter_vec!(
         "actions_over_records",
         "Number of actions over records",
-        &["action"]
+        &["action", "record_type"]
     )
     .unwrap();
     static ref FAILED_COMMANDS_TO_EXECUTE_COUNTER_VEC: IntCounterVec = register_int_counter_vec!(
@@ -55,6 +58,11 @@ lazy_static! {
         &["command"]
     )
     .unwrap();
+    static ref RECORDS_FOR_PURGING_SIZE: Gauge = register_gauge!(
+        "size_of_records_for_purging",
+        "Number of failed record maniuplations",
+    )
+    .unwrap();
 }
 
 #[tokio::main]
@@ -64,6 +72,7 @@ async fn main() -> anyhow::Result<()> {
 
     env_logger::init();
 
+    info!("{:?}", settings::settings());
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
     // new memcg based accounting, see https://lwn.net/Articles/837122/
     let rlim = libc::rlimit {
@@ -102,9 +111,10 @@ async fn main() -> anyhow::Result<()> {
     // Another channel that will act as a collector for all the propagated data
     let (_tx, rx) = watch::channel(false);
     let (t_event, r_event_collector): (mpsc::Sender<DnsResponse>, mpsc::Receiver<DnsResponse>) =
-        mpsc::channel(50);
+        mpsc::channel(20);
 
     let dns_answers = Arc::new(RwLock::new(BinaryHeap::new()));
+    let last_seen_answer = Arc::new(RwLock::new(std::collections::HashMap::new()));
 
     let read_buffer = tokio::spawn(async move {
         let mut rx = rx.clone();
@@ -142,8 +152,10 @@ async fn main() -> anyhow::Result<()> {
 
     let collector = {
         let received_data = Arc::clone(&dns_answers);
+        let last_seen_answer = Arc::clone(&last_seen_answer);
+
         tokio::spawn(async move {
-            aggregate_dns_answers(r_event_collector, received_data).await;
+            aggregate_dns_answers(r_event_collector, received_data, last_seen_answer).await;
         })
     };
 
@@ -164,13 +176,26 @@ async fn main() -> anyhow::Result<()> {
 
     let refresher = {
         let dns_answers = Arc::clone(&dns_answers);
+        let last_seen_answer = Arc::clone(&last_seen_answer);
+
         match settings().we_running_docker {
             true => tokio::spawn(async move {
-                purge_dns_records(dns_answers, DockerUnboundInvalidator, DockerDigRepopulator)
-                    .await;
+                purge_dns_records(
+                    dns_answers,
+                    DockerUnboundInvalidator,
+                    DockerDigRepopulator,
+                    last_seen_answer,
+                )
+                .await;
             }),
             false => tokio::spawn(async move {
-                purge_dns_records(dns_answers, UnboundInvalidator, DigRepopulator).await
+                purge_dns_records(
+                    dns_answers,
+                    UnboundInvalidator,
+                    DigRepopulator,
+                    last_seen_answer,
+                )
+                .await
             }),
         }
     };

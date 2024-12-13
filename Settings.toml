@@ -3,3 +3,4 @@ min_ttl_to_keep_record = 30
 max_ttl_to_keep_record = 3600
 max_records_to_refresh_in_cycle = 100
 we_running_docker = true
+min_time_to_expire_to_purge = 300

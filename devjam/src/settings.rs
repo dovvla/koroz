@@ -17,16 +17,18 @@ pub struct Settings {
     pub min_ttl_to_keep_record: u32,
     pub max_ttl_to_keep_record: u32,
     pub we_running_docker: bool,
+    pub min_time_to_expire_to_purge: i64,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            purge_wake_up_interval: 10,
-            max_ttl_to_keep_record: 7200,
-            min_ttl_to_keep_record: 15,
+            purge_wake_up_interval: 5,
+            min_ttl_to_keep_record: 30,
+            max_ttl_to_keep_record: 3600,
             max_records_to_refresh_in_cycle: 100,
             we_running_docker: false,
+            min_time_to_expire_to_purge: 300,
         }
     }
 }

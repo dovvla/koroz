@@ -11,13 +11,30 @@ pub type DnsResponse = Vec<DnsAnswer>;
 
 pub type Universe = Arc<RwLock<BinaryHeap<DnsAnswer>>>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum RecordType {
-    A,
-    AAAA,
-    Other,
+    A = 1,
+    AAAA = 2,
+    CNAME = 3,
+    MX = 4,
+    TXT = 5,
+    Other = 6,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+
+impl RecordType {
+    pub fn form_for_command_line_arg(&self) -> &str {
+        match self {
+            RecordType::A => "a",
+            RecordType::AAAA => "aaaa",
+            RecordType::CNAME => "cname",
+            RecordType::MX => "mx",
+            RecordType::TXT => "txt",
+            RecordType::Other => "any",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Cls {
     IN,
     CS,
@@ -30,6 +47,9 @@ impl From<RData<'_>> for RecordType {
         match data {
             dns_parser::RData::A(_) => RecordType::A,
             dns_parser::RData::AAAA(_) => RecordType::AAAA,
+            dns_parser::RData::CNAME(_) => RecordType::CNAME,
+            dns_parser::RData::MX(_) => RecordType::MX,
+            dns_parser::RData::TXT(_) => RecordType::TXT,
             _ => RecordType::Other,
         }
     }
@@ -46,7 +66,7 @@ impl From<Class> for Cls {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct DnsAnswer {
     pub domain_name: String,
     pub ttl: u32,
@@ -70,7 +90,7 @@ impl From<(ResourceRecord<'_>, DateTime<Utc>)> for DnsAnswer {
 impl DnsAnswer {
     pub fn expiration_time(&self) -> DateTime<Utc> {
         self.read_from_buffer_ts
-            .checked_sub_signed(TimeDelta::seconds(self.ttl.into()))
+            .checked_add_signed(TimeDelta::seconds(self.ttl.into()))
             .unwrap_or(DateTime::<Utc>::MAX_UTC)
     }
 
