@@ -102,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
     // Another channel that will act as a collector for all the propagated data
     let (_tx, rx) = watch::channel(false);
     let (t_event, r_event_collector): (mpsc::Sender<DnsResponse>, mpsc::Receiver<DnsResponse>) =
-        mpsc::channel(1);
+        mpsc::channel(50);
 
     let dns_answers = Arc::new(RwLock::new(BinaryHeap::new()));
 
@@ -166,12 +166,8 @@ async fn main() -> anyhow::Result<()> {
         let dns_answers = Arc::clone(&dns_answers);
         match settings().we_running_docker {
             true => tokio::spawn(async move {
-                purge_dns_records(
-                    dns_answers,
-                    DockerUnboundInvalidator::default(),
-                    DockerDigRepopulator::default(),
-                )
-                .await;
+                purge_dns_records(dns_answers, DockerUnboundInvalidator, DockerDigRepopulator)
+                    .await;
             }),
             false => tokio::spawn(async move {
                 purge_dns_records(dns_answers, UnboundInvalidator, DigRepopulator).await

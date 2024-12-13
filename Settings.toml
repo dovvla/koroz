@@ -1,4 +1,4 @@
-purge_wake_up_interval = 5
+purge_wake_up_interval = 1
 min_ttl_to_keep_record = 30
 max_ttl_to_keep_record = 3600
 max_records_to_refresh_in_cycle = 100
