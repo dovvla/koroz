@@ -1,0 +1,19 @@
+# use this compose with sudo !!!
+name: devjam
+services:
+    unbound:
+        container_name: my-unbound
+        ports:
+            - 53533:53/tcp
+            - 53533:53/udp
+        restart: unless-stopped
+        volumes:
+            - ./unbound_server.key:/opt/unbound/etc/unbound/unbound_server.key
+            - ./unbound_server.pem:/opt/unbound/etc/unbound/unbound_server.pem
+            - ./unbound_control.key:/opt/unbound/etc/unbound/unbound_control.key
+            - ./unbound_control.pem:/opt/unbound/etc/unbound/unbound_control.pem
+            - ./unbound.conf:/opt/unbound/etc/unbound/unbound.conf
+        image: mvance/unbound:latest
+        post_start:
+          - command: sh -c 'apt update && apt install dnsutils -y'
+            user: root

@@ -29,5 +29,6 @@ pub async fn metrics() -> Result<impl Reply, warp::Rejection> {
     let encoder = TextEncoder::new();
     let metric_families = prometheus::gather();
     encoder.encode(&metric_families, &mut buffer).unwrap();
-    std::result::Result::Ok(reply::with_status(reply::html(buffer), StatusCode::OK))
+
+    std::result::Result::Ok(String::from_utf8(buffer.clone()).unwrap())
 }

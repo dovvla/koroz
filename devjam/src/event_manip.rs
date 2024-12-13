@@ -24,21 +24,23 @@ async fn process_command_end_output(
         match output_result {
             Ok(output) => match output.status.success() {
                 true => ACTIONS_OVER_RECORDS_COUNTER
-                    .with_label_values(&[if command_type == "dig" {
-                        "repopulate"
+                    .with_label_values(&[if command_type == "invalidate" {
+                        "invalidate"
                     } else {
-                        "purge"
+                        "repopulate"
                     }])
                     .inc(),
-                false => FAILED_COMMANDS_TO_EXECUTE_COUNTER_VEC
-                    .with_label_values(&[
-                        command_type,
-                        &output.status.code().unwrap_or(-1).to_string(),
-                    ])
-                    .inc(),
+                false => {
+                    dbg!(&output);
+                    FAILED_COMMANDS_TO_EXECUTE_COUNTER_VEC
+                        .with_label_values(&[
+                            command_type,
+                            &output.status.code().unwrap_or(-1).to_string(),
+                        ])
+                        .inc()
+                }
             },
-            Err(e) => {
-                dbg!(e);
+            Err(_) => {
                 FAILED_RECORDS_MANIPULATION_COUNTER_VEC
                     .with_label_values(&[command_type])
                     .inc();
@@ -86,15 +88,15 @@ pub async fn purge_dns_records(dns_answer_set: Arc<RwLock<BinaryHeap<DnsAnswer>>
                         .arg("my-unbound")
                         .arg("unbound-control")
                         .arg("flush")
-                        .arg(record.domain_name.clone())
-                        .kill_on_drop(true);
+                        .kill_on_drop(true)
+                        .arg(record.domain_name.clone());
                     cmd.output()
                 }
                 false => {
                     let mut cmd = Command::new("unbound-control");
                     cmd.arg("flush")
-                        .arg(record.domain_name.clone())
-                        .kill_on_drop(true);
+                        .kill_on_drop(true)
+                        .arg(record.domain_name.clone());
                     cmd.output()
                 }
             })
@@ -112,8 +114,8 @@ pub async fn purge_dns_records(dns_answer_set: Arc<RwLock<BinaryHeap<DnsAnswer>>
                         .arg("-it")
                         .arg("my-unbound")
                         .arg("dig")
-                        .arg(record.domain_name.clone())
-                        .kill_on_drop(true);
+                        .kill_on_drop(true)
+                        .arg(record.domain_name.clone());
                     cmd.output()
                 }
                 false => {
@@ -128,7 +130,6 @@ pub async fn purge_dns_records(dns_answer_set: Arc<RwLock<BinaryHeap<DnsAnswer>>
             process_command_end_output(command_end, "repopulate").await;
         }
 
-        info!("Finished iteration");
         tokio::time::sleep(tokio::time::Duration::from_secs(
             settings::settings().purge_wake_up_interval,
         ))
