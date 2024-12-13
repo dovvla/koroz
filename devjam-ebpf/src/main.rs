@@ -56,7 +56,7 @@ fn try_devjam(ctx: XdpContext) -> Result<u32, ()> {
                     let udphdr: *const UdpHdr =
                         unsafe { ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN) }?;
                     if u16::from_be(unsafe { (*udphdr).source }) != 53 {
-                        info!(&ctx, "Found DNS Response packet!")
+                        // info!(&ctx, "Found DNS Response packet!")
                     }
                 }
                 _ => return Err(()),
