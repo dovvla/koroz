@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 
+use prometheus::{Encoder, TextEncoder};
 use warp::http::StatusCode;
 use warp::{
     reply::{self, Reply},
@@ -21,4 +22,12 @@ pub async fn get_universe(universe: Universe) -> Result<impl Reply, warp::Reject
         reply::json(&universe.clone()),
         StatusCode::OK,
     ))
+}
+
+pub async fn metrics() -> Result<impl Reply, warp::Rejection> {
+    let mut buffer = vec![];
+    let encoder = TextEncoder::new();
+    let metric_families = prometheus::gather();
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+    std::result::Result::Ok(reply::with_status(reply::html(buffer), StatusCode::OK))
 }

@@ -1,13 +1,15 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BinaryHeap, sync::Arc};
 
 use chrono::{DateTime, TimeDelta, Utc};
 use dns_parser::{Class, RData, ResourceRecord};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
+use crate::settings::{self};
+
 pub type DnsResponse = Vec<DnsAnswer>;
 
-pub type Universe = Arc<RwLock<BTreeSet<DnsAnswer>>>;
+pub type Universe = Arc<RwLock<BinaryHeap<DnsAnswer>>>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RecordType {
@@ -71,18 +73,16 @@ impl DnsAnswer {
             .checked_sub_signed(TimeDelta::seconds(self.ttl.into()))
             .unwrap_or(DateTime::<Utc>::MAX_UTC)
     }
+
+    pub fn has_reasonable_ttl(&self) -> bool {
+        self.ttl > settings::settings().min_ttl_to_keep_record
+            && self.ttl < settings::settings().max_ttl_to_keep_record
+    }
 }
 
 impl PartialOrd for DnsAnswer {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        if self.expiration_time() == other.expiration_time() {
-            Some(std::cmp::Ordering::Equal)
-        } else {
-            match self.expiration_time() > other.expiration_time() {
-                true => Some(std::cmp::Ordering::Less),
-                false => Some(std::cmp::Ordering::Greater),
-            }
-        }
+        Some(self.cmp(other))
     }
 }
 

@@ -1,10 +1,15 @@
 use anyhow::{Context as _, Ok};
 use chrono::{self};
-use event_manip::event_collector;
-use std::collections::BTreeSet;
+use event_manip::aggregate_dns_answers;
+use event_manip::purge_dns_records;
+use lazy_static::lazy_static;
+use prometheus::register_int_counter_vec;
+use prometheus::IntCounterVec;
+use std::collections::BinaryHeap;
 use std::sync::Arc;
 use std::{ptr, slice};
 use warp::Filter;
+use warp_handlers::metrics;
 use warp_handlers::{get_universe, with_universe};
 
 use aya::programs::{Xdp, XdpFlags};
@@ -15,6 +20,7 @@ use tokio::join;
 use tokio::sync::{mpsc, watch, RwLock};
 
 mod event_manip;
+mod settings;
 mod structs;
 mod warp_handlers;
 use structs::{DnsAnswer, DnsResponse};
@@ -23,6 +29,27 @@ use structs::{DnsAnswer, DnsResponse};
 struct Opt {
     #[clap(short, long, default_value = "enp5s0")]
     iface: String,
+}
+
+lazy_static! {
+    static ref ACTIONS_OVER_RECORDS_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "actions_over_records",
+        "Number of actions over records",
+        &["action"]
+    )
+    .unwrap();
+    static ref FAILED_COMMANDS_TO_EXECUTE_COUNTER_VEC: IntCounterVec = register_int_counter_vec!(
+        "failed_commands_to_execute",
+        "Number of failed commands to execute",
+        &["command", "exit_code"]
+    )
+    .unwrap();
+    static ref FAILED_RECORDS_MANIPULATION_COUNTER_VEC: IntCounterVec = register_int_counter_vec!(
+        "failed_records_manipulation",
+        "Number of failed record maniuplations",
+        &["command"]
+    )
+    .unwrap();
 }
 
 #[tokio::main]
@@ -72,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
     let (t_event, r_event_collector): (mpsc::Sender<DnsResponse>, mpsc::Receiver<DnsResponse>) =
         mpsc::channel(1);
 
-    let received_data = Arc::new(RwLock::new(BTreeSet::new()));
+    let dns_answers = Arc::new(RwLock::new(BinaryHeap::new()));
 
     let read_buffer = tokio::spawn(async move {
         let mut rx = rx.clone();
@@ -109,26 +136,35 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let collector = {
-        let received_data = Arc::clone(&received_data);
+        let received_data = Arc::clone(&dns_answers);
         tokio::spawn(async move {
-            event_collector(r_event_collector, received_data).await;
+            aggregate_dns_answers(r_event_collector, received_data).await;
         })
     };
 
     let get_universe_route = warp::path("universe")
         .and(warp::get())
-        .and(with_universe(received_data.clone()))
+        .and(with_universe(dns_answers.clone()))
         .and_then(get_universe);
+
+    let metrics_route = warp::path("metrics").and(warp::get()).and_then(metrics);
+
+    let warp_routes = warp::get().and(get_universe_route).or(metrics_route);
 
     let warp_handle = {
         tokio::spawn(async move {
-            warp::serve(get_universe_route)
-                .run(([127, 0, 0, 1], 3030))
-                .await;
+            warp::serve(warp_routes).run(([127, 0, 0, 1], 3030)).await;
         })
     };
 
-    join!(collector, read_buffer, warp_handle);
+    let refresher = {
+        let dns_answers = Arc::clone(&dns_answers);
+        tokio::spawn(async move {
+            purge_dns_records(dns_answers).await;
+        })
+    };
+
+    join!(collector, read_buffer, warp_handle, refresher);
     info!("Exiting...");
     Ok(())
 }
