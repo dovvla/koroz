@@ -582,53 +582,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "devjam"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aya",
- "aya-build",
- "aya-log",
- "bytes",
- "chrono",
- "clap",
- "config",
- "devjam-common",
- "devjam-ebpf",
- "dns-parser",
- "env_logger",
- "epoll",
- "lazy_static",
- "libc",
- "log",
- "nix",
- "prometheus",
- "serde",
- "sqlx",
- "tokio",
- "warp",
-]
-
-[[package]]
-name = "devjam-common"
-version = "0.1.0"
-dependencies = [
- "aya",
-]
-
-[[package]]
-name = "devjam-ebpf"
-version = "0.1.0"
-dependencies = [
- "aya-ebpf",
- "aya-log-ebpf",
- "devjam-common",
- "dnsparse",
- "network-types",
- "which",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1306,6 +1259,53 @@ dependencies = [
  "pest",
  "pest_derive",
  "serde",
+]
+
+[[package]]
+name = "koroz"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aya",
+ "aya-build",
+ "aya-log",
+ "bytes",
+ "chrono",
+ "clap",
+ "config",
+ "dns-parser",
+ "env_logger",
+ "epoll",
+ "koroz-common",
+ "koroz-ebpf",
+ "lazy_static",
+ "libc",
+ "log",
+ "nix",
+ "prometheus",
+ "serde",
+ "sqlx",
+ "tokio",
+ "warp",
+]
+
+[[package]]
+name = "koroz-common"
+version = "0.1.0"
+dependencies = [
+ "aya",
+]
+
+[[package]]
+name = "koroz-ebpf"
+version = "0.1.0"
+dependencies = [
+ "aya-ebpf",
+ "aya-log-ebpf",
+ "dnsparse",
+ "koroz-common",
+ "network-types",
+ "which",
 ]
 
 [[package]]

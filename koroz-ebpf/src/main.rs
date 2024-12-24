@@ -18,11 +18,11 @@ use network_types::{
 };
 
 #[map]
-static DNS_RESPONSES_RING_BUFFER: RingBuf = RingBuf::with_byte_size(32_777_216u32, 0);
+static DNS_RESPONSES_RING_BUFFER: RingBuf = RingBuf::with_byte_size(2147483648u32, 0);
 
 #[xdp]
-pub fn devjam(ctx: XdpContext) -> u32 {
-    match try_devjam(ctx) {
+pub fn koroz(ctx: XdpContext) -> u32 {
+    match try_koroz(ctx) {
         Ok(ret) => ret,
         Err(_) => xdp_action::XDP_ABORTED,
     }
@@ -42,7 +42,7 @@ unsafe fn ptr_at<T>(ctx: &XdpContext, offset: usize) -> Result<*const T, ()> {
     Ok(&*ptr)
 }
 
-fn try_devjam(ctx: XdpContext) -> Result<u32, ()> {
+fn try_koroz(ctx: XdpContext) -> Result<u32, ()> {
     let ethhdr: *const EthHdr = unsafe { ptr_at(&ctx, 0)? };
     match unsafe { (*ethhdr).ether_type } {
         EtherType::Ipv4 => {
@@ -94,9 +94,7 @@ fn try_devjam(ctx: XdpContext) -> Result<u32, ()> {
                 }
             }
         }
-        None => {
-            info!(&ctx, "Cannot reserve space in ring buffer.");
-        }
+        None => {}
     };
     return Ok(XDP_PASS);
 }

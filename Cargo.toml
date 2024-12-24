@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["devjam", "devjam-common", "devjam-ebpf"]
-default-members = ["devjam", "devjam-common"]
+members = ["koroz", "koroz-common", "koroz-ebpf"]
+default-members = ["koroz", "koroz-common"]
 
 [workspace.dependencies]
 aya = { version = "0.13.1", default-features = false }
@@ -21,6 +21,6 @@ log = { version = "0.4.22", default-features = false }
 tokio = { version = "1.40.0", default-features = false }
 which = { version = "6.0.0", default-features = false }
 
-[profile.release.package.devjam-ebpf]
+[profile.release.package.koroz-ebpf]
 debug = 2
 codegen-units = 1

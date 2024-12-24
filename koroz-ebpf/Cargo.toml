@@ -1,10 +1,10 @@
 [package]
-name = "devjam-ebpf"
+name = "koroz-ebpf"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-devjam-common = { path = "../devjam-common" }
+koroz-common = { path = "../koroz-common" }
 
 aya-ebpf = { workspace = true }
 aya-log-ebpf = { workspace = true }
@@ -15,5 +15,5 @@ network-types = "0.0.7"
 which = { workspace = true }
 
 [[bin]]
-name = "devjam"
+name = "koroz"
 path = "src/main.rs"

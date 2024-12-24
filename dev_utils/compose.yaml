@@ -1,5 +1,5 @@
 # use this compose with sudo !!!
-name: devjam
+name: koroz
 services:
     unbound:
         container_name: my-unbound

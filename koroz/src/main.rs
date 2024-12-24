@@ -94,14 +94,14 @@ async fn main() -> anyhow::Result<()> {
     // reach for `Bpf::load_file` instead.
     let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
         env!("OUT_DIR"),
-        "/devjam"
+        "/koroz"
     )))?;
     if let Err(e) = aya_log::EbpfLogger::init(&mut ebpf) {
         // This can happen if you remove all log statements from your eBPF program.
         warn!("failed to initialize eBPF logger: {}", e);
     }
     let Opt { iface, port } = opt;
-    let program: &mut Xdp = ebpf.program_mut("devjam").unwrap().try_into()?;
+    let program: &mut Xdp = ebpf.program_mut("koroz").unwrap().try_into()?;
     program.load()?;
     program.attach(&iface, XdpFlags::SKB_MODE)
         .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
@@ -125,7 +125,6 @@ async fn main() -> anyhow::Result<()> {
     let read_buffer = tokio::spawn(async move {
         let mut rx = rx.clone();
         let mut async_fd = AsyncFd::new(ring_dump).unwrap();
-
         loop {
             tokio::select! {
                 _ = async_fd.readable_mut() => {

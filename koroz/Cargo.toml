@@ -1,10 +1,10 @@
 [package]
-name = "devjam"
+name = "koroz"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-devjam-common = { path = "../devjam-common", features = ["user"] }
+koroz-common = { path = "../koroz-common", features = ["user"] }
 
 anyhow = { workspace = true, default-features = true }
 aya = { workspace = true }
@@ -60,8 +60,8 @@ aya-build = { workspace = true }
 # Finally note that *any* usage of `artifact = ...` in *any* Cargo.toml in the workspace breaks
 # workflows with stable cargo; stable cargo outright refuses to load manifests that use unstable
 # features.
-devjam-ebpf = { path = "../devjam-ebpf" }
+koroz-ebpf = { path = "../koroz-ebpf" }
 
 [[bin]]
-name = "devjam"
+name = "koroz"
 path = "src/main.rs"
