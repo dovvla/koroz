@@ -17,3 +17,21 @@ services:
         post_start:
           - command: sh -c 'apt update && apt install dnsutils -y'
             user: root
+    postgresml:
+        stdin_open: true
+        tty: true
+        volumes:
+            - postgresml_data:/var/lib/postgresql
+        environment:
+            - POSTGRES_PASSWORD=password
+            - POSTGRES_USER=postgres
+            - POSTGRES_DB=dns
+        ports:
+            - 5432:5432
+            - 8000:8000
+        image: ghcr.io/postgresml/postgresml:2.9.3
+        command: sudo -u postgresml psql -d postgresml
+volumes:
+    postgresml_data:
+        external: true
+        name: postgresml_data

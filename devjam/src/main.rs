@@ -12,7 +12,9 @@ use prometheus::register_int_counter_vec;
 use prometheus::Gauge;
 use prometheus::IntCounterVec;
 use settings::settings;
+use sqlx::PgPool;
 use std::collections::BinaryHeap;
+use std::env;
 use std::sync::Arc;
 use std::{ptr, slice};
 use warp::Filter;
@@ -27,6 +29,7 @@ use tokio::join;
 use tokio::sync::{mpsc, watch, RwLock};
 
 mod event_manip;
+mod persistence;
 mod settings;
 mod structs;
 mod warp_handlers;
@@ -103,6 +106,8 @@ async fn main() -> anyhow::Result<()> {
     program.attach(&iface, XdpFlags::SKB_MODE)
         .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
 
+    let pool = PgPool::connect(&env::var("DATABASE_URL")?).await?;
+
     // --- END: Boilerplate ------------------------------------------------------------
 
     let ring_dump =
@@ -156,7 +161,7 @@ async fn main() -> anyhow::Result<()> {
         let last_seen_answer = Arc::clone(&last_seen_answer);
 
         tokio::spawn(async move {
-            aggregate_dns_answers(r_event_collector, received_data, last_seen_answer).await;
+            aggregate_dns_answers(r_event_collector, received_data, last_seen_answer, pool).await;
         })
     };
 

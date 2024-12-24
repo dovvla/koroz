@@ -3,6 +3,7 @@ use std::{collections::BinaryHeap, sync::Arc};
 use chrono::{DateTime, TimeDelta, Utc};
 use dns_parser::{Class, RData, ResourceRecord};
 use serde::{Deserialize, Serialize};
+use sqlx::prelude::{FromRow, Type};
 use tokio::sync::RwLock;
 
 use crate::settings::{self};
@@ -11,7 +12,7 @@ pub type DnsResponse = Vec<DnsAnswer>;
 
 pub type Universe = Arc<RwLock<BinaryHeap<DnsAnswer>>>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Type)]
 pub enum RecordType {
     A = 1,
     AAAA = 2,
@@ -19,6 +20,22 @@ pub enum RecordType {
     MX = 4,
     TXT = 5,
     Other = 6,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Type)]
+pub enum Cls {
+    IN = 1,
+    CS = 2,
+    CH = 3,
+    HS = 4,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, FromRow)]
+pub struct DnsAnswer {
+    pub domain_name: String,
+    pub ttl: u32,
+    pub cls: Cls,
+    pub record_type: RecordType,
+    pub read_from_buffer_ts: DateTime<Utc>,
 }
 
 impl RecordType {
@@ -32,14 +49,6 @@ impl RecordType {
             RecordType::Other => "any",
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum Cls {
-    IN,
-    CS,
-    CH,
-    HS,
 }
 
 impl From<RData<'_>> for RecordType {
@@ -64,15 +73,6 @@ impl From<Class> for Cls {
             Class::HS => Cls::HS,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct DnsAnswer {
-    pub domain_name: String,
-    pub ttl: u32,
-    pub cls: Cls,
-    pub record_type: RecordType,
-    pub read_from_buffer_ts: DateTime<Utc>,
 }
 
 impl From<(ResourceRecord<'_>, DateTime<Utc>)> for DnsAnswer {

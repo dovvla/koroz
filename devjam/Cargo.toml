@@ -34,6 +34,14 @@ serde = { version = "1.0.215", features = ["serde_derive"] }
 chrono = { version = "0.4.39", features = ["serde"] }
 prometheus = "0.13.4"
 lazy_static = "1.5.0"
+sqlx = { version = "0.8", features = [
+    "runtime-tokio",
+    "tls-native-tls",
+    "postgres",
+    "derive",
+    "macros",
+    "chrono",
+] }
 
 config = "0.14.0"
 

@@ -4,7 +4,8 @@ use std::process::Output;
 use std::{collections::BinaryHeap, sync::Arc};
 
 use chrono::{DateTime, Duration, Utc};
-use log::info;
+use log::{error, info};
+use sqlx::{Pool, Postgres};
 use tokio::process::Command;
 use tokio::sync::{mpsc, RwLock};
 use tokio::task::{JoinError, JoinSet};
@@ -132,6 +133,7 @@ pub async fn aggregate_dns_answers(
     mut rx: mpsc::Receiver<DnsResponse>,
     dns_answer_set: Arc<RwLock<BinaryHeap<DnsAnswer>>>,
     last_seen_answers: Arc<RwLock<HashMap<(String, RecordType), DateTime<Utc>>>>,
+    pool: Pool<Postgres>,
 ) {
     info!("Started event collector");
     while let Some(dns_answers) = rx.recv().await {
@@ -149,14 +151,17 @@ pub async fn aggregate_dns_answers(
                 ),
                 dns_answer.expiration_time(),
             );
+            if let Err(e) = dns_answer.upsert(&pool).await {
+                error!("Failed to insert DNS answer: {:?}", e);
+            }
         }
     }
 }
 
 pub async fn purge_dns_records<I: DnsInvalidate, R: DnsRepopulate>(
     dns_answer_set: Arc<RwLock<BinaryHeap<DnsAnswer>>>,
-    invalidation: I,
-    repopulation: R,
+    invalidator: I,
+    repopulator: R,
     last_seen_answers: Arc<RwLock<HashMap<(String, RecordType), DateTime<Utc>>>>,
 ) {
     info!("Started purger/repopulator");
@@ -191,7 +196,7 @@ pub async fn purge_dns_records<I: DnsInvalidate, R: DnsRepopulate>(
         let mut invalidation_commands: JoinSet<_> = records_for_purging
             .iter()
             .map(|record| {
-                invalidation
+                invalidator
                     .command_invalidate_name(&record.domain_name, &record.record_type)
                     .output()
             })
@@ -203,7 +208,7 @@ pub async fn purge_dns_records<I: DnsInvalidate, R: DnsRepopulate>(
         let mut repopulation_commands: JoinSet<_> = records_for_purging
             .iter()
             .map(|record| {
-                repopulation
+                repopulator
                     .command_repopulate_name(&record.domain_name, &record.record_type)
                     .output()
             })
